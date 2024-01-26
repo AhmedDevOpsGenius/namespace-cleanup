@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Get the current date in Unix timestamp format
+current_time=$(date +%s)
+
+# Get the list of excluded namespaces
+excluded_namespaces="default kube-system kube-public kube-node-lease ingress-nginx-shared grafana env-integration cert-manager-shared caching-shared aks-command"
+
+# Get the list of namespaces
+namespaces=$(kubectl get namespaces -o custom-columns=NAME:.metadata.name,CREATED:.metadata.creationTimestamp --no-headers)
+
+# Iterate through each namespace
+while read -r name creation_time; do
+    # Check if the namespace is in the exclusion list
+    if [[ $excluded_namespaces =~ (^|[[:space:]])$name($|[[:space:]]) ]]; then
+        continue
+    fi
+
+    # Extract only the date portion from the timestamp (YYYY-MM-DD format)
+    creation_date=${creation_time:0:10}
+
+    # Convert creation date to Unix timestamp
+    creation_unix_time=$(date -j -f "%Y-%m-%d" "$creation_date" +%s)
+
+    # Calculate the difference in days
+    time_diff=$(( (current_time - creation_unix_time) / 86400 ))
+
+    # Check if the namespace is older than 4 days
+    if [ $time_diff -ge 4 ]; then
+        echo "Namespace $name has been present for $time_diff days or more and will be deleted."
+        kubectl delete namespace "$name"
+    fi
+done <<< "$namespaces"
